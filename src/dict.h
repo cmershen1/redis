@@ -44,6 +44,7 @@
 /* Unused arguments generate annoying warnings... */
 #define DICT_NOTUSED(V) ((void) V)
 
+//哈希表节点，同Java中的HashMap，是拉链结构
 typedef struct dictEntry {
     void *key;
     union {
@@ -52,11 +53,11 @@ typedef struct dictEntry {
         int64_t s64;
         double d;
     } v;
-    struct dictEntry *next;
+    struct dictEntry *next; //单链表
 } dictEntry;
 
 typedef struct dictType {
-    uint64_t (*hashFunction)(const void *key);
+    uint64_t (*hashFunction)(const void *key); //hash算法
     void *(*keyDup)(void *privdata, const void *key);
     void *(*valDup)(void *privdata, const void *obj);
     int (*keyCompare)(void *privdata, const void *key1, const void *key2);
@@ -66,6 +67,8 @@ typedef struct dictType {
 
 /* This is our hash table structure. Every dictionary has two of this as we
  * implement incremental rehashing, for the old to the new table. */
+
+//hashtable数据结构
 typedef struct dictht {
     dictEntry **table;
     unsigned long size;
@@ -73,10 +76,11 @@ typedef struct dictht {
     unsigned long used;
 } dictht;
 
+//字典数据结构
 typedef struct dict {
     dictType *type;
     void *privdata;
-    dictht ht[2];
+    dictht ht[2]; //两个哈希表，用于rehash的时候保留备份？？
     long rehashidx; /* rehashing not in progress if rehashidx == -1 */
     unsigned long iterators; /* number of iterators currently running */
 } dict;

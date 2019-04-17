@@ -131,11 +131,14 @@ int zslRandomLevel(void) {
  * of the passed SDS string 'ele'. */
 zskiplistNode *zslInsert(zskiplist *zsl, double score, sds ele) {
     zskiplistNode *update[ZSKIPLIST_MAXLEVEL], *x;
-    unsigned int rank[ZSKIPLIST_MAXLEVEL];
+    unsigned int rank[ZSKIPLIST_MAXLEVEL]; //记录每一层前面有多少点
     int i, level;
 
     serverAssert(!isnan(score));
     x = zsl->header;
+
+    //寻找score对应的前驱节点
+    //每一层都找 用update记录每一层该插入哪个点 以及span值
     for (i = zsl->level-1; i >= 0; i--) {
         /* store rank that is crossed to reach the insert position */
         rank[i] = i == (zsl->level-1) ? 0 : rank[i+1];
@@ -153,7 +156,13 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, sds ele) {
      * scores, reinserting the same element should never happen since the
      * caller of zslInsert() should test in the hash table if the element is
      * already inside or not. */
+
+    // 生成一个随机的层数序号，[1,64]随机，powerlaw-alike
+    // 数字越大，返回的概率越小
+
     level = zslRandomLevel();
+
+    //如果比当前最大的还大，就补充空的节点
     if (level > zsl->level) {
         for (i = zsl->level; i < level; i++) {
             rank[i] = 0;
@@ -164,17 +173,17 @@ zskiplistNode *zslInsert(zskiplist *zsl, double score, sds ele) {
     }
     x = zslCreateNode(level,score,ele);
     for (i = 0; i < level; i++) {
-        x->level[i].forward = update[i]->level[i].forward;
-        update[i]->level[i].forward = x;
+        x->level[i].forward = update[i]->level[i].forward; //x的后继是原来update[i]的第i层的后继
+        update[i]->level[i].forward = x;//update[i]后继指向x
 
         /* update span covered by update[i] as x is inserted here */
-        x->level[i].span = update[i]->level[i].span - (rank[0] - rank[i]);
-        update[i]->level[i].span = (rank[0] - rank[i]) + 1;
+        x->level[i].span = update[i]->level[i].span - (rank[0] - rank[i]);//x的跨度为x到forward的距离，即为update[i]到forward的距离减去update[i]到x的距离
+        update[i]->level[i].span = (rank[0] - rank[i]) + 1; //update[i]到x的距离加1（x）
     }
 
     /* increment span for untouched levels */
     for (i = level; i < zsl->level; i++) {
-        update[i]->level[i].span++;
+        update[i]->level[i].span++; //比level高的也跨度+1，因为多了x节点
     }
 
     x->backward = (update[0] == zsl->header) ? NULL : update[0];
@@ -220,6 +229,8 @@ int zslDelete(zskiplist *zsl, double score, sds ele, zskiplistNode **node) {
     int i;
 
     x = zsl->header;
+
+    //找每一层的前驱
     for (i = zsl->level-1; i >= 0; i--) {
         while (x->level[i].forward &&
                 (x->level[i].forward->score < score ||
@@ -233,6 +244,8 @@ int zslDelete(zskiplist *zsl, double score, sds ele, zskiplistNode **node) {
     /* We may have multiple elements with the same score, what we need
      * is to find the element with both the right score and object. */
     x = x->level[0].forward;
+
+    // 如果x是要删的节点
     if (x && score == x->score && sdscmp(x->ele,ele) == 0) {
         zslDeleteNode(zsl, x, update);
         if (!node)
@@ -241,6 +254,8 @@ int zslDelete(zskiplist *zsl, double score, sds ele, zskiplistNode **node) {
             *node = x;
         return 1;
     }
+
+    //要删除的节点不存在
     return 0; /* not found */
 }
 
@@ -441,6 +456,8 @@ unsigned long zslDeleteRangeByLex(zskiplist *zsl, zlexrangespec *range, dict *di
 
 /* Delete all the elements with rank between start and end from the skiplist.
  * Start and end are inclusive. Note that start and end need to be 1-based */
+
+//删除排名在start-end闭区间的节点
 unsigned long zslDeleteRangeByRank(zskiplist *zsl, unsigned int start, unsigned int end, dict *dict) {
     zskiplistNode *update[ZSKIPLIST_MAXLEVEL], *x;
     unsigned long traversed = 0, removed = 0;
@@ -473,6 +490,8 @@ unsigned long zslDeleteRangeByRank(zskiplist *zsl, unsigned int start, unsigned 
  * Returns 0 when the element cannot be found, rank otherwise.
  * Note that the rank is 1-based due to the span of zsl->header to the
  * first element. */
+
+// 根据分数获取排名 1-based
 unsigned long zslGetRank(zskiplist *zsl, double score, sds ele) {
     zskiplistNode *x;
     unsigned long rank = 0;
